@@ -6,16 +6,62 @@
 
 namespace parser
 {
+
+    struct Vec3i
+    {
+        int x, y, z;
+    };
+
     //Notice that all the structures are as simple as possible
     //so that you are not enforced to adopt any style or design.
     struct Vec3f
     {
         float x, y, z;
-    };
 
-    struct Vec3i
-    {
-        int x, y, z;
+        Vec3f(){}
+
+        Vec3f(float x, float y, float z): x(x), y(y), z(z){}
+
+        Vec3f(const Vec3i &vec): x(vec.x), y(vec.y), z(vec.z){}
+
+        Vec3f operator* (float scl) const{
+            return Vec3f(
+                    x*scl,
+                    y*scl,
+                    z*scl
+                    );
+        }
+
+        Vec3f operator* (const Vec3f &vec) const{
+            return Vec3f(
+                    x*vec.x,
+                    y*vec.y,
+                    z*vec.z
+            );
+        }
+        Vec3f operator+ (const Vec3f &vec){
+            return Vec3f(
+                    x + vec.x,
+                    y + vec.y,
+                    z + vec.z
+                    );
+        }
+
+        Vec3f operator- (const Vec3f &vec){
+            return Vec3f(
+                    x - vec.x,
+                    y - vec.y,
+                    z - vec.z
+            );
+        }
+
+        Vec3f operator/ (float scl) const{
+            return Vec3f(
+                    x/scl,
+                    y/scl,
+                    z/scl
+            );
+        }
     };
 
     struct Vec4f
