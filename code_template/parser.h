@@ -40,28 +40,37 @@ namespace parser
             );
         }
         Vec3f operator+ (const Vec3f &vec){
-            return Vec3f(
+            return {
                     x + vec.x,
                     y + vec.y,
                     z + vec.z
-                    );
+                    };
         }
 
         Vec3f operator- (const Vec3f &vec){
-            return Vec3f(
+            return {
                     x - vec.x,
                     y - vec.y,
                     z - vec.z
-            );
+            };
         }
 
         Vec3f operator/ (float scl) const{
-            return Vec3f(
+            return {
                     x/scl,
                     y/scl,
                     z/scl
-            );
+            };
         }
+
+        Vec3f operator= (const Vec3f &vec){
+            return {
+                    x = vec.x,
+                    y = vec.y,
+                    z = vec.z
+            };
+        }
+
     };
 
     struct Vec4f
@@ -113,6 +122,10 @@ namespace parser
     {
         int material_id;
         Face indices;
+
+        Triangle(){}
+        Triangle(int id, Face inds): material_id(id), indices(inds){}
+
     };
 
     struct Sphere

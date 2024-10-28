@@ -3,7 +3,7 @@
 #include "parser.h"
 #include "ppm.h"
 
-using namespace parser
+using namespace parser;
 typedef unsigned char RGB[3];
 
 /*
@@ -26,7 +26,7 @@ typedef unsigned char RGB[3];
  *
  * */
 
-typedef struct Ray{
+struct Ray{
     Vec3f origin;
     Vec3f direction;
 
@@ -35,23 +35,28 @@ typedef struct Ray{
 
 };
 
-typedef struct Intersection {
+struct Intersection {
     int materialId;
     int objId;
     float tValue;
     bool intersects;
     Vec3f surfaceNormal;
     Vec3f intPoint;
+    Vec3f color;
 
-    Intersection():intersects(false), tValue(MAXFLOAT) {}
+    Intersection():intersects(false), tValue(MAXFLOAT){
+        color.x = -1;
+        color.y = -1;
+        color.z = -1;
+    }
+
     Intersection(bool itsct): intersects(itsct){}
 
 };
 
 
-
 float calcDeterminant(Vec3f &v0, Vec3f &v1, Vec3f &v2){
-    return v0.x*(v1.y*v2.z - v2.y*v1.z) - v0.y( v1.x*v2.z - v1.z*v2.x) + v0.z*(v1.x*v2.y-v1.y*v2.x);
+    return v0.x*(v1.y*v2.z - v2.y*v1.z) - v0.y*( v1.x*v2.z - v1.z*v2.x) + v0.z*(v1.x*v2.y-v1.y*v2.x);
 }
 
 float dotProduct(Vec3f &v1, Vec3f &v2){
@@ -67,16 +72,35 @@ Vec3f normalize(Vec3f vec){
     return newVec;
 }
 
-float crossProduct(Vec3f &v1, Vec3f &v2){
+Vec3f crossProduct(Vec3f &v1, Vec3f &v2){
     Vec3f result;
     result.x = v1.y*v2.z - v1.z*v2.y;
     result.y = v1.z*v2.x - v1.x*v2.z;
     result.z = v1.x*v2.y - v1.y*v2.x;
+
+    return result;
 }
 
 
-float distance(Vec3f &v1, Vec3f &v2){
+float calcDistance(Vec3f &v1, Vec3f &v2){
     return sqrt(pow((v1.x - v2.x),2) + pow((v1.y - v2.y),2) + pow((v1.z - v2.z),2));
+}
+
+Vec3f clamp(Vec3f color){
+    if (color.x > 255){
+        color.x = 255;
+    }
+
+    if(color.y > 255){
+        color.y = 255;
+    }
+
+    if(color.z > 255){
+        color.z = 255;
+    }
+
+    return Vec3f(round(color.x), round(color.y), round(color.z));
+
 }
 
 
@@ -114,19 +138,21 @@ Vec3f intersectionPt(Ray &ray, double t){
 Intersection sphereIntersection(Ray &ray, Scene &scene, Sphere &sphere){
     Intersection pt;
     Vec3f center = scene.vertex_data[sphere.center_vertex_id - 1];
+    Vec3f o_c = (ray.origin-center);
+    Vec3f o_cDoubled= (ray.origin-center)*2.0;
 
     float a = dotProduct(ray.direction, ray.direction);
-    float b = dotProduct(ray.direction, (ray.origin-center))*2;
-    float c = dotProduct((ray.origin-center), (ray.origin-center)) - pow(sphere.radius, 2);
+    float b = dotProduct(ray.direction, o_cDoubled);
+    float c = dotProduct(o_c, o_c) - pow(sphere.radius, 2);
 
     float discriminant = (b*b) - 4*(a*c);
 
     if (discriminant >= 0){
         float firstTerm = (-1)*b/2;
-        float secondTerm = sqrt(pow(b/2, 2) - a*(pow((ray.origin - center),2)- pow(sphere.radius,2)));
+        float secondTerm = sqrt(pow(b/2, 2) - a*(dotProduct(o_c, o_c))- pow(sphere.radius,2));
 
-        float t1 =; (firstTerm + secondTerm)/a;
-        float t2 =; (firstTerm - secondTerm)/a;
+        float t1 = (firstTerm + secondTerm)/a;
+        float t2 = (firstTerm - secondTerm)/a;
 
         float t = (t1 > t2) ? t2: t1;
         if(t > 0){
@@ -203,19 +229,23 @@ Intersection triangleIntersection(Ray &ray, Scene &scene, Triangle &triangle){
         return pt;
     }
 
+    Vec3f a_b = b - a;
+    Vec3f a_c = c - a;
+
     pt.intersects = true;
     pt.intPoint = ray.origin+(ray.direction*t);
-    pt.surfaceNormal = normalize(crossProduct((b-a), (c-a)));
+    pt.surfaceNormal = normalize(crossProduct(a_c, a_b)); // bu dogru mu bak!!!!
     pt.tValue = t;
     pt.materialId = triangle.material_id;
 
     return pt;
 }
 
-Intersection meshIntersection(Ray &ray, Mesh &mesh){
+Intersection meshIntersection(Ray &ray, Scene &scene, Mesh &mesh){
     Intersection closest;
     for (const Face &face: mesh.faces) {
-        Intersection temp = triangleIntersection(ray, Triangle(mesh.material_id, face));
+        Triangle triTemp(mesh.material_id, face);
+        Intersection temp = triangleIntersection(ray, scene, triTemp);
         if (temp.intersects && temp.tValue < closest.tValue){
             closest.tValue = temp.tValue;
             closest.intersects = true;
@@ -240,19 +270,19 @@ Vec3f irradiance(PointLight &light, Vec3f &point){
 }
 
 Vec3f diffuseShading(PointLight &light, Scene &scene, Intersection &intersection){
-    Vec3f irradiance = irradiance(light, intersection.intPoint);
+    Vec3f irrd = irradiance(light, intersection.intPoint);
     Vec3f l = normalize((light.position - intersection.intPoint));
     float  p = dotProduct(l, intersection.surfaceNormal);
     if (p < 0){
         p = 0;
     }
-    return scene.materials[intersection.id-1].diffuse*(irradiance*p)
+    return scene.materials[intersection.materialId-1].diffuse*(irrd*p);
 
 }
 
 Vec3f specularShading(PointLight &light, Scene &scene, Intersection &intersection, Ray &ray){
-    Vec3f irradiance = irradiance(light, intersection.intPoint);
-    Material material = scene.materials[intersection.id-1];
+    Vec3f irrd = irradiance(light, intersection.intPoint);
+    Material material = scene.materials[intersection.materialId-1];
     Vec3f l = normalize(light.position - intersection.intPoint);
     Vec3f r = normalize(l - ray.direction);
 
@@ -262,10 +292,10 @@ Vec3f specularShading(PointLight &light, Scene &scene, Intersection &intersectio
         p = 0;
     }
 
-    return material.specular * irradiance * pow(p, material.phong_exponent);
+    return material.specular * irrd * pow(p, material.phong_exponent);
 }
 
-Vec3f findClosest(Ray &ray, Scene &scene, Camera &cam, int mirrorRecDepth){
+Intersection findClosest(Ray &ray, Scene &scene, Camera &cam, int mirrorRecDepth){
 
     Intersection result;
 
@@ -288,7 +318,7 @@ Vec3f findClosest(Ray &ray, Scene &scene, Camera &cam, int mirrorRecDepth){
     }
 
     for (int i = 0; i < scene.meshes.size(); ++i) {
-        Intersection closestMesh = meshIntersection(ray,scene.meshes[i]);
+        Intersection closestMesh = meshIntersection(ray, scene, scene.meshes[i]);
         if (closestMesh.intersects && closestMesh.tValue < result.tValue){
             result = closestMesh;
         }
@@ -303,7 +333,7 @@ Vec3f findClosest(Ray &ray, Scene &scene, Camera &cam, int mirrorRecDepth){
 
         for (PointLight &light : scene.point_lights){
             bool inShadow = false;
-            float distance = distance(light.position, cam.position);
+            float distance = calcDistance(light.position, cam.position);
 
             Vec3f w = normalize(light.position - result.intPoint);
             Vec3f e = w * scene.shadow_ray_epsilon;
@@ -345,6 +375,8 @@ Vec3f findClosest(Ray &ray, Scene &scene, Camera &cam, int mirrorRecDepth){
                 Vec3f diffuse = diffuseShading(light, scene, result);
                 Vec3f specular = specularShading(light, scene, result, ray);
                 color = color + diffuse + specular;
+                result.color = color;
+
             }
         }
 
@@ -352,63 +384,54 @@ Vec3f findClosest(Ray &ray, Scene &scene, Camera &cam, int mirrorRecDepth){
             Vec3f reflectionDirection = normalize((ray.direction - result.surfaceNormal) * (dotProduct(ray.direction, result.surfaceNormal) * 2.0));
             Vec3f eps = reflectionDirection * scene.shadow_ray_epsilon;
             Ray reflection(result.intPoint+eps, reflectionDirection);
-            Intersection reflectionIntersection= findClosest(ray, scene, cam, mirrorRecDepth +1);
+            Intersection reflectionIntersection= findClosest(reflection, scene, cam, mirrorRecDepth +1);
 
             if (reflectionIntersection.intersects){
-                color + scene.materials[reflectionIntersection.materialId-1].mirror;
+                color = color + scene.materials[reflectionIntersection.materialId-1].mirror;
             }
-
         }
-
-        return color;
+        result.color = color;
     }
+
+    return result;
 
 }
 
 
-
-
-
-
-int main(int argc, char* argv[])
-{
+int main(int argc, char* argv[]) {
     // Sample usage for reading an XML scene file
     parser::Scene scene;
-
     scene.loadFromXml(argv[1]);
 
-    for(Camera &cam : scene.cameras){
+    for (Camera &cam: scene.cameras) {
         const int width = cam.image_width, height = cam.image_height;
-        unsigned char* image = new unsigned char [width * height * 3];
+        unsigned char *image = new unsigned char[width * height * 3];
 
         int i = 0;
 
-        for (int h = 0; h < width ; h++) {
-            for (int w = 0; w < height; w++, pixelIndex += 3) {
+        for (int h = 0; h < width; h++) {
+            for (int w = 0; w < height; w++) {
                 Ray ray = getRay(w, h, cam);
-
+                Intersection intersection = findClosest(ray, scene, cam, scene.max_recursion_depth);
                 //find intersection
                 //calculate rgb, pls clamp.
 
-                if(intersection){
+                if (intersection.intersects) {
+                    clamp(intersection.color);
                     image[i++] = intersection.color.x;
                     image[i++] = intersection.color.y;
                     image[i++] = intersection.color.z;
-                }else{
+                } else {
                     image[i++] = scene.background_color.x;
                     image[i++] = scene.background_color.y;
                     image[i++] = scene.background_color.z;
                 }
-
-
             }
-
         }
-
-
+        write_ppm("test.ppm", image, width, height);
     }
-
-
+    return 0;
+}
 
     // The code below creates a test pattern and writes
     // it to a PPM file to demonstrate the usage of the
@@ -417,7 +440,7 @@ int main(int argc, char* argv[])
     // Normally, you would be running your ray tracing
     // code here to produce the desired image.
 
-    const RGB BAR_COLOR[8] =
+  /*  const RGB BAR_COLOR[8] =
     {
         { 255, 255, 255 },  // 100% White
         { 255, 255,   0 },  // Yellow
@@ -428,7 +451,7 @@ int main(int argc, char* argv[])
         {   0,   0, 255 },  // Blue
         {   0,   0,   0 },  // Black
     };
-
+*/
     /*int width = 640, height = 480;
     int columnWidth = width / 8;
 */
@@ -448,6 +471,4 @@ int main(int argc, char* argv[])
     }
 */
 
-    write_ppm("test.ppm", image, width, height);
 
-}
