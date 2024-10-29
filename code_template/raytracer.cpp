@@ -106,7 +106,10 @@ Vec3f clamp(Vec3f color){
 
 Ray getRay(int w, int h, Camera &cam){
 
-    float l = cam.near_plane.x, r = cam.near_plane.y, b = cam.near_plane.z, t = cam.near_plane.w;
+    float l = cam.near_plane.x;
+    float r = cam.near_plane.y;
+    float b = cam.near_plane.z;
+    float t = cam.near_plane.w;
     float s_u = (r - l)*(w+0.5)/cam.image_width;
     float s_v = (t- b)*(h+0.5)/cam.image_height;
 
@@ -125,15 +128,19 @@ Ray getRay(int w, int h, Camera &cam){
 
 Vec3f intersectionPt(Ray &ray, double t){
     // r(t) = o +td
-    Vec3f p;
-    p.x = ray.origin.x * ray.direction.x;
+    Vec3f p = ray.origin + ray.direction*t;
+    /*p.x = ray.origin.x + ray.direction.x * t;
     p.y = ray.origin.y * ray.direction.y;
-    p.z = ray.origin.z * ray.direction.z;
+    p.z = ray.origin.z * ray.direction.z;*/
 
     return p;
 }
 
-/* intersections */
+/*
+ *
+ * Intersections
+ *
+ * */
 
 Intersection sphereIntersection(Ray &ray, Scene &scene, Sphere &sphere){
     Intersection pt;
@@ -177,28 +184,6 @@ Intersection triangleIntersection(Ray &ray, Scene &scene, Triangle &triangle){
     Vec3f &a = scene.vertex_data[triangle.indices.v0_id -1];
     Vec3f &b = scene.vertex_data[triangle.indices.v1_id -1];
     Vec3f &c = scene.vertex_data[triangle.indices.v2_id -1];
-
-    /*float axox = a.x - ray.origin.x;
-    float axbx = a.x - b.x;
-    float axcx = a.x - c.x;
-    float ayoy = a.y - ray.origin.y;
-    float ayby = a.y - b.y;
-    float aycy = a.y - c.y;
-    float azoz = a.z - ray.origin.z;
-    float azbz = a.z - b.z;
-    float azcz = a.z - c.z;
-
-    Vec3f beta_nom1 = new Vec3f(axox, axcx, ray.direction.x);
-    Vec3f beta_nom2 = new Vec3f(ayoy, aycy, ray.direction.y);
-    Vec3f beta_nom3 = new Vec3f(azoz, azcz, ray.direction.z);
-
-    Vec3f beta_nom1 = new Vec3f(axox, axcx, ray.direction.x);
-    Vec3f beta_nom2 = new Vec3f(ayoy, aycy, ray.direction.y);
-    Vec3f beta_nom3 = new Vec3f(azoz, azcz, ray.direction.z);
-
-    Vec3f beta_nom1 = new Vec3f(axox, axcx, ray.direction.x);
-    Vec3f beta_nom2 = new Vec3f(ayoy, aycy, ray.direction.y);
-    Vec3f beta_nom3 = new Vec3f(azoz, azcz, ray.direction.z);*/
 
     Vec3f ab = a - b;
     Vec3f ac = a - c;
@@ -257,7 +242,11 @@ Intersection meshIntersection(Ray &ray, Scene &scene, Mesh &mesh){
     return closest;
 }
 
-/* shading */
+/*
+ *
+ * shading
+ *
+ * */
 
 Vec3f irradiance(PointLight &light, Vec3f &point){
     Vec3f i = light.position - point;
@@ -295,7 +284,13 @@ Vec3f specularShading(PointLight &light, Scene &scene, Intersection &intersectio
     return material.specular * irrd * pow(p, material.phong_exponent);
 }
 
-Intersection findClosest(Ray &ray, Scene &scene, Camera &cam, int mirrorRecDepth){
+/*
+ *
+ * main handler
+ *
+ */
+
+Intersection hitFunction(Ray &ray, Scene &scene, Camera &cam, int mirrorRecDepth){
 
     Intersection result;
 
@@ -371,7 +366,6 @@ Intersection findClosest(Ray &ray, Scene &scene, Camera &cam, int mirrorRecDepth
             }
 
             if(!inShadow || (inShadow && distance == 0)){
-                int materialId = result.materialId;
                 Vec3f diffuse = diffuseShading(light, scene, result);
                 Vec3f specular = specularShading(light, scene, result, ray);
                 color = color + diffuse + specular;
@@ -384,7 +378,7 @@ Intersection findClosest(Ray &ray, Scene &scene, Camera &cam, int mirrorRecDepth
             Vec3f reflectionDirection = normalize((ray.direction - result.surfaceNormal) * (dotProduct(ray.direction, result.surfaceNormal) * 2.0));
             Vec3f eps = reflectionDirection * scene.shadow_ray_epsilon;
             Ray reflection(result.intPoint+eps, reflectionDirection);
-            Intersection reflectionIntersection= findClosest(reflection, scene, cam, mirrorRecDepth +1);
+            Intersection reflectionIntersection= hitFunction(reflection, scene, cam, mirrorRecDepth + 1);
 
             if (reflectionIntersection.intersects){
                 color = color + scene.materials[reflectionIntersection.materialId-1].mirror;
@@ -412,7 +406,7 @@ int main(int argc, char* argv[]) {
         for (int h = 0; h < width; h++) {
             for (int w = 0; w < height; w++) {
                 Ray ray = getRay(w, h, cam);
-                Intersection intersection = findClosest(ray, scene, cam, scene.max_recursion_depth);
+                Intersection intersection = hitFunction(ray, scene, cam, scene.max_recursion_depth);
                 //find intersection
                 //calculate rgb, pls clamp.
 
@@ -432,43 +426,5 @@ int main(int argc, char* argv[]) {
     }
     return 0;
 }
-
-    // The code below creates a test pattern and writes
-    // it to a PPM file to demonstrate the usage of the
-    // ppm_write function.
-    //
-    // Normally, you would be running your ray tracing
-    // code here to produce the desired image.
-
-  /*  const RGB BAR_COLOR[8] =
-    {
-        { 255, 255, 255 },  // 100% White
-        { 255, 255,   0 },  // Yellow
-        {   0, 255, 255 },  // Cyan
-        {   0, 255,   0 },  // Green
-        { 255,   0, 255 },  // Magenta
-        { 255,   0,   0 },  // Red
-        {   0,   0, 255 },  // Blue
-        {   0,   0,   0 },  // Black
-    };
-*/
-    /*int width = 640, height = 480;
-    int columnWidth = width / 8;
-*/
-
-/*
-
-    int i = 0;
-    for (int y = 0; y < height; ++y)
-    {
-        for (int x = 0; x < width; ++x)
-        {
-            int colIdx = x / columnWidth;
-            image[i++] = BAR_COLOR[colIdx][0];
-            image[i++] = BAR_COLOR[colIdx][1];
-            image[i++] = BAR_COLOR[colIdx][2];
-        }
-    }
-*/
 
 
