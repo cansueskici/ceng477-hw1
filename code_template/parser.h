@@ -47,6 +47,13 @@ namespace parser
                     };
         }
 
+        Vec3f operator+= (const Vec3f& vec) {
+            x += vec.x;
+            y += vec.y;
+            z += vec.z;
+            return *this;
+        }
+
         Vec3f operator- (const Vec3f &vec){
             return {
                     x - vec.x,

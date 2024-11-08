@@ -6,6 +6,7 @@
 using namespace parser;
 typedef unsigned char RGB[3];
 
+enum object_type{NONE, SPH, TRI, MESH};
 /*
  * for each pixel s
  * compute r // done
@@ -36,34 +37,34 @@ struct Ray{
 };
 
 struct Intersection {
-    int materialId;
-    int objId;
-    float tValue;
+
     bool intersects;
+    int materialId;
+    float tValue;
+    object_type obj_type;
     Vec3f surfaceNormal;
     Vec3f intPoint;
     Vec3f color;
 
-    Intersection():intersects(false), tValue(MAXFLOAT){
-        color.x = -1;
-        color.y = -1;
-        color.z = -1;
-    }
-
+    Intersection():intersects(false){}
     Intersection(bool itsct): intersects(itsct){}
+    Intersection(bool intcs, int mat_id, float tval, object_type obty, Vec3f nrml, Vec3f intpt)
+    :intersects(intcs), materialId(mat_id), tValue(tval), obj_type(obty), surfaceNormal(nrml), intPoint(intpt){}
 
 };
 
-
-float calcDeterminant(Vec3f &v0, Vec3f &v1, Vec3f &v2){
-    return v0.x*(v1.y*v2.z - v2.y*v1.z) - v0.y*( v1.x*v2.z - v1.z*v2.x) + v0.z*(v1.x*v2.y-v1.y*v2.x);
+float calcDeterminant(const Vec3f &v0, const Vec3f &v1, const Vec3f &v2){
+    return v0.x * (v1.y*v2.z - v2.y*v1.z)
+           + v0.y * (v2.x*v1.z - v1.x*v2.z)
+           + v0.z * (v1.x*v2.y - v1.y*v2.x);
 }
 
-float dotProduct(Vec3f &v1, Vec3f &v2){
+
+const float dotProduct(Vec3f &v1, Vec3f &v2){
     return (v1.x*v2.x + v1.y*v2.y + v1.z*v2.z);
 }
 
-Vec3f normalize(Vec3f vec){
+Vec3f normalize(Vec3f vec) {
     Vec3f newVec;
     float len = sqrt(dotProduct(vec, vec));
     newVec.x = vec.x/len;
@@ -73,25 +74,22 @@ Vec3f normalize(Vec3f vec){
 }
 
 Vec3f crossProduct(Vec3f &v1, Vec3f &v2){
-    Vec3f result;
-    result.x = v1.y*v2.z - v1.z*v2.y;
-    result.y = v1.z*v2.x - v1.x*v2.z;
-    result.z = v1.x*v2.y - v1.y*v2.x;
+    return Vec3f(v1.y*v2.z - v1.z*v2.y, v1.z*v2.x - v1.x*v2.z, v1.x*v2.y - v1.y*v2.x);
 
-    return result;
 }
 
-
-float calcDistance(Vec3f &v1, Vec3f &v2){
+const float calcDistance(Vec3f &v1, Vec3f &v2){
     return sqrt(pow((v1.x - v2.x),2) + pow((v1.y - v2.y),2) + pow((v1.z - v2.z),2));
 }
 
 Vec3f clamp(Vec3f color){
-    color.x = std::min(255.0f, std::max(0.0f, color.x));
-    color.y = std::min(255.0f, std::max(0.0f, color.y));
-    color.z = std::min(255.0f, std::max(0.0f, color.z));
-
-    return Vec3f(round(color.x), round(color.y), round(color.z));
+//    color.x = round(std::min(255.0f, std::max(0.0f, color.x)));
+//    color.y = round(std::min(255.0f, std::max(0.0f, color.y)));
+//    color.z = round(std::min(255.0f, std::max(0.0f, color.z)));
+    if (color.x > 255) color.x = 255; else color.x = round(color.x);
+    if (color.y > 255) color.y = 255; else color.y = round(color.y);
+    if (color.z > 255) color.z = 255; else color.z = round(color.z);
+    return color;
 
 }
 
@@ -106,25 +104,20 @@ Ray getRay(int w, int h, Camera &cam){
     float s_v = (t- b)*(h+0.5)/cam.image_height;
 
     Vec3f u = normalize(crossProduct(cam.gaze, cam.up));
-    Vec3f v = normalize(crossProduct(u, cam.gaze));
+    Vec3f gaze_normalized = normalize(cam.gaze);
+    Vec3f v = normalize(crossProduct(u, gaze_normalized));
 
-    Vec3f m = cam.position+(cam.gaze*cam.near_distance);
+    Vec3f m = cam.position+(gaze_normalized*cam.near_distance);
     Vec3f q = m + (u*l) + (v*t);
     Vec3f s = q + (u*s_u) - (v*s_v);
-
-    Ray ray;
-    ray.direction = normalize((s-cam.position));
-    ray.origin = cam.position;
+    Vec3f d = normalize(s - cam.position);
+    Ray ray(cam.position, d);
     return ray;
 }
 
 Vec3f intersectionPt(Ray &ray, double t){
     // r(t) = o +td
     Vec3f p = ray.origin + ray.direction*t;
-    /*p.x = ray.origin.x + ray.direction.x * t;
-    p.y = ray.origin.y * ray.direction.y;
-    p.z = ray.origin.z * ray.direction.z;*/
-
     return p;
 }
 
@@ -134,15 +127,12 @@ Vec3f intersectionPt(Ray &ray, double t){
  *
  * */
 
-Intersection sphereIntersection(Ray &ray, Scene &scene, Sphere &sphere){
-    Intersection pt;
+Intersection sphereIntersection(Ray &ray, Scene &scene, const Sphere &sphere){
     Vec3f center = scene.vertex_data[sphere.center_vertex_id - 1];
-    Vec3f o_c = (ray.origin-center);
-    Vec3f o_cDoubled= (ray.origin-center)*2.0;
-
+    Vec3f o_c = ray.origin-center;
     float a = dotProduct(ray.direction, ray.direction);
-    float b = dotProduct(ray.direction, o_cDoubled);
-    float c = dotProduct(o_c, o_c) - pow(sphere.radius, 2);
+    float b = 2*dotProduct(ray.direction, o_c) ;
+    float c = dotProduct(o_c, o_c) - (sphere.radius*sphere.radius);
 
     float discriminant = (b*b) - 4*(a*c);
 
@@ -153,26 +143,22 @@ Intersection sphereIntersection(Ray &ray, Scene &scene, Sphere &sphere){
         float t1 = (firstTerm + secondTerm)/a;
         float t2 = (firstTerm - secondTerm)/a;
 */
-        float t1 = (-b - sqrt(discriminant)) /(2*a);
-        float t2 = (-b + sqrt(discriminant) )/(2*a);
+        float t1 = (-b - sqrt(discriminant))/(2*a);
+        float t2 = (-b + sqrt(discriminant))/(2*a);
 
-        float t = (t1 > t2) ? t2: t1;
+        float t = (t1 < t2) ? t1: t2;
         if(t > 0){
-            pt.intersects = true;
-            pt.intPoint = ray.origin + (ray.direction*t);
-            pt.surfaceNormal = (pt.intPoint-center)/sphere.radius;
-            pt.materialId = sphere.material_id;
-            pt.tValue = t;
-
-            return pt;
+            Vec3f intersect_point = intersectionPt(ray, t);
+            Vec3f normal = (intersect_point - center)/sphere.radius;
+            return Intersection(true, sphere.material_id, t, SPH, normal, intersect_point);
         }
 
     }else{
-        return pt;
+        return Intersection(false);
     }
 }
 
-Intersection triangleIntersection(Ray &ray, Scene &scene, Triangle &triangle){
+Intersection triangleIntersection(Ray &ray, Scene &scene, const Triangle &triangle){
 
     Intersection pt;
 
@@ -199,44 +185,32 @@ Intersection triangleIntersection(Ray &ray, Scene &scene, Triangle &triangle){
         return pt;
     }
 
-    float beta = beta_determinant/a_determinant;
-    if(beta < 0 || beta > 1){
-        return pt;
-    }
-
     float gamma = gamma_determinant/a_determinant;
-    if (gamma < 0 || gamma > (1-gamma)){
+    if (gamma < 0 || gamma > 1){
         return pt;
     }
 
-    Vec3f a_b = b - a;
-    Vec3f a_c = c - a;
+    float beta = beta_determinant/a_determinant;
+    if(beta < 0 || beta > (1-gamma)){
+        return pt;
+    }
 
-    pt.intersects = true;
-    pt.intPoint = ray.origin+(ray.direction*t);
-    pt.surfaceNormal = normalize(crossProduct(a_c, a_b)); // bu dogru mu bak!!!!
-    pt.tValue = t;
-    pt.materialId = triangle.material_id;
-
-    return pt;
+    Vec3f ints = ray.origin + ray.direction*t;
+    Vec3f ba = b-a;
+    Vec3f ca = c-a;
+    Vec3f normal = normalize(crossProduct(ba, ca));
+    return Intersection(true, triangle.material_id, t, TRI, normal, ints);
 }
 
-Intersection meshIntersection(Ray &ray, Scene &scene, Mesh &mesh){
+Intersection meshIntersection(Ray &ray, Scene &scene, const Mesh &mesh){
     Intersection closest;
-    for (const Face &face: mesh.faces) {
-        Triangle triTemp(mesh.material_id, face);
-        Intersection temp = triangleIntersection(ray, scene, triTemp);
-        if (temp.intersects && temp.tValue < closest.tValue){
-            closest.tValue = temp.tValue;
-            closest.intersects = true;
-            closest.surfaceNormal = temp.surfaceNormal;
-            closest.color = temp.color;
-            closest.intPoint = temp.intPoint;
-            closest.materialId = temp.materialId;
+    closest.tValue = std::numeric_limits<float>::max();
+    for (const Face &face: mesh.faces){
+        Intersection possible_intersection = triangleIntersection(ray,scene, Triangle(mesh.material_id, face));
+        if(possible_intersection.intersects && possible_intersection.tValue < closest.tValue){
+            closest = possible_intersection;
         }
     }
-
-    //closest.intPoint = intersectionPt(ray, closest.tValue);
     return closest;
 }
 
@@ -249,19 +223,17 @@ Intersection meshIntersection(Ray &ray, Scene &scene, Mesh &mesh){
 Vec3f irradiance(PointLight &light, Vec3f &point){
     Vec3f i = light.position - point;
     float d = dotProduct(i, i);
-    if(d == 0.0){
-        return Vec3f();
+    if(d != 0.0){
+        return light.intensity / d;
     }
-    return light.intensity / d;
+    return Vec3f();
+
 }
 
 Vec3f diffuseShading(PointLight &light, Scene &scene, Intersection &intersection){
     Vec3f irrd = irradiance(light, intersection.intPoint);
     Vec3f l = normalize((light.position - intersection.intPoint));
-    float  p = dotProduct(l, intersection.surfaceNormal);
-    if (p < 0){
-        p = 0;
-    }
+    float  p = dotProduct(l, intersection.surfaceNormal) >= 0 ? dotProduct(l, intersection.surfaceNormal): 0;
     return scene.materials[intersection.materialId-1].diffuse*(irrd*p);
 
 }
@@ -272,12 +244,7 @@ Vec3f specularShading(PointLight &light, Scene &scene, Intersection &intersectio
     Vec3f l = normalize(light.position - intersection.intPoint);
     Vec3f r = normalize(l - ray.direction);
 
-    float p = dotProduct(intersection.surfaceNormal, r);
-
-    if (p < 0){
-        p = 0;
-    }
-
+    float p = dotProduct(intersection.surfaceNormal, r) >=0? dotProduct(intersection.surfaceNormal, r): 0;
     return material.specular * irrd * pow(p, material.phong_exponent);
 }
 
@@ -291,27 +258,31 @@ Intersection hitFunction(Ray &ray, Scene &scene, Camera &cam, int mirrorRecDepth
 
     Intersection result;
 
+
     if (mirrorRecDepth > scene.max_recursion_depth){
-        std::cout << "hi" << std::endl;
         return result;
     }
+    result.tValue = std::numeric_limits<float>::max();
 
     for (int i = 0; i < scene.spheres.size(); ++i) {
-        Intersection closestSphere = sphereIntersection(ray, scene, scene.spheres[i]);
+        const Sphere &sph = scene.spheres[i];
+        Intersection closestSphere = sphereIntersection(ray, scene, sph);
         if (closestSphere.intersects && closestSphere.tValue < result.tValue){
             result = closestSphere;
         }
     }
 
-    for (int i = 0; i < scene.triangles.size(); ++i) {
-        Intersection closestTriangle = triangleIntersection(ray,scene,scene.triangles[i]);
+    for (int j = 0; j < scene.triangles.size(); ++j) {
+        const Triangle &tri = scene.triangles[j];
+        Intersection closestTriangle = triangleIntersection(ray,scene,tri);
         if (closestTriangle.intersects && closestTriangle.tValue < result.tValue){
             result = closestTriangle;
         }
     }
 
-    for (int i = 0; i < scene.meshes.size(); ++i) {
-        Intersection closestMesh = meshIntersection(ray, scene, scene.meshes[i]);
+    for (int k = 0; k < scene.meshes.size(); ++k) {
+        const Mesh &msh = scene.meshes[k];
+        Intersection closestMesh = meshIntersection(ray, scene, msh);
         if (closestMesh.intersects && closestMesh.tValue < result.tValue){
             result = closestMesh;
         }
@@ -337,25 +308,25 @@ Intersection hitFunction(Ray &ray, Scene &scene, Camera &cam, int mirrorRecDepth
             float tLight = (light.position - shadowRay.origin).x/shadowRay.direction.x;
 
             for (int i = 0; i < scene.spheres.size(); ++i) {
-                Sphere &sphere = scene.spheres[i];
-                Intersection sphInts = sphereIntersection(shadowRay, scene, sphere);
+                const Sphere &sph = scene.spheres[i];
+                Intersection sphInts = sphereIntersection(shadowRay, scene, sph);
                 if(sphInts.intersects && sphInts.tValue < tLight){
                     inShadow = true;
                 }
             }
 
-            for (int i = 0; i < scene.triangles.size(); ++i) {
-                Triangle &triangle = scene.triangles[i];
-                Intersection triInts = triangleIntersection(shadowRay, scene, triangle);
+            for (int j = 0; j < scene.triangles.size(); ++j) {
+                const Triangle &tri = scene.triangles[j];
+                Intersection triInts = triangleIntersection(shadowRay, scene, tri);
                 if (triInts.intersects && triInts.tValue < tLight){
                     inShadow = true;
                 }
             }
 
             if(!inShadow){
-                for (int i = 0; i < scene.meshes.size(); ++i) {
-                    Mesh &mesh = scene.meshes[i];
-                    Intersection meshInts = meshIntersection(shadowRay, scene, mesh);
+                for (int k = 0; k < scene.meshes.size(); ++k) {
+                    const Mesh &msh = scene.meshes[k];
+                    Intersection meshInts = meshIntersection(shadowRay, scene, msh);
                     if (meshInts.intersects && meshInts.tValue < tLight){
                         inShadow = true;
                     }
@@ -367,22 +338,19 @@ Intersection hitFunction(Ray &ray, Scene &scene, Camera &cam, int mirrorRecDepth
                 int material_id = result.materialId;
                 Vec3f diffuse = diffuseShading(light, scene, result);
                 Vec3f specular = specularShading(light, scene, result, ray);
-                color = color + diffuse + specular;
-                result.materialId = material_id;
-                result.color = color;
+                color += diffuse + specular;
 
             }
         }
 
         if(material.is_mirror){
-           // Vec3f reflectionDirection = normalize((ray.direction - result.surfaceNormal) * (dotProduct(ray.direction, result.surfaceNormal) * 2.0));
-            Vec3f reflectionDirection = normalize(ray.direction - result.surfaceNormal * 2 * dotProduct(ray.direction, result.surfaceNormal)) ;
+            Vec3f reflectionDirection = normalize(ray.direction - result.surfaceNormal * 2.0 * dotProduct(ray.direction, result.surfaceNormal)) ;
             Vec3f eps = reflectionDirection * scene.shadow_ray_epsilon;
             Ray reflection(result.intPoint+eps, reflectionDirection);
             Intersection reflectionIntersection= hitFunction(reflection, scene, cam, mirrorRecDepth + 1);
 
             if (reflectionIntersection.intersects){
-                color = color + scene.materials[reflectionIntersection.materialId-1].mirror;
+                color += scene.materials[reflectionIntersection.materialId-1].mirror;
             }
         }
         result.color = color;
@@ -404,26 +372,26 @@ int main(int argc, char* argv[]) {
 
         int i = 0;
 
-        for (int h = 0; h < width; h++) {
-            for (int w = 0; w < height; w++) {
+        for (int h = 0; h < cam.image_height; h++) {
+            for (int w = 0; w < cam.image_width; w++, i+=3) {
                 Ray ray = getRay(w, h, cam);
                 Intersection intersection = hitFunction(ray, scene, cam, scene.max_recursion_depth);
                 //find intersection
                 //calculate rgb, pls clamp.
 
                 if (intersection.intersects) {
-                    clamp(intersection.color);
-                    image[i++] = intersection.color.x;
-                    image[i++] = intersection.color.y;
-                    image[i++] = intersection.color.z;
+                    intersection.color = clamp(intersection.color);
+                    image[i] = intersection.color.x;
+                    image[i+1] = intersection.color.y;
+                    image[i+2] = intersection.color.z;
                 } else {
-                    image[i++] = scene.background_color.x;
-                    image[i++] = scene.background_color.y;
-                    image[i++] = scene.background_color.z;
+                    image[i] = scene.background_color.x;
+                    image[i+1] = scene.background_color.y;
+                    image[i+2] = scene.background_color.z;
                 }
             }
         }
-        write_ppm("test.ppm", image, width, height);
+        write_ppm(cam.image_name.c_str(), image, width, height);
     }
     return 0;
 }
