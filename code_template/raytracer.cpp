@@ -83,15 +83,33 @@ const float calcDistance(Vec3f &v1, Vec3f &v2){
 }
 
 Vec3f clamp(Vec3f color){
-//    color.x = round(std::min(255.0f, std::max(0.0f, color.x)));
-//    color.y = round(std::min(255.0f, std::max(0.0f, color.y)));
-//    color.z = round(std::min(255.0f, std::max(0.0f, color.z)));
-    if (color.x > 255) color.x = 255; else color.x = round(color.x);
-    if (color.y > 255) color.y = 255; else color.y = round(color.y);
-    if (color.z > 255) color.z = 255; else color.z = round(color.z);
+    color.x = std::min(255.0f, std::max(0.0f, color.x));
+    color.y = std::min(255.0f, std::max(0.0f, color.y));
+    color.z = std::min(255.0f, std::max(0.0f, color.z));
+//    if (color.x > 255) color.x = 255; else if (color.x < 0) color.x = 0; else color.x = round(color.x);
+//    if (color.y > 255) color.y = 255; else if (color.y < 0) color.y = 0; else color.y = round(color.y);
+//    if (color.z > 255) color.z = 255; else if (color.z < 0) color.z = 0; else color.z = round(color.z);
+//    if (color.x > 255) color.x = 255; else if (color.x < 0) color.x = 0; else color.x = color.x;
+//    if (color.y > 255) color.y = 255; else if (color.y < 0) color.y = 0; else color.y = color.y;
+//    if (color.z > 255) color.z = 255; else if (color.z < 0) color.z = 0; else color.z = color.z;
     return color;
 
 }
+
+Vec3i clamp(Vec3i color){
+    color.x = std::min(255, std::max(0, color.x));
+    color.y = std::min(255, std::max(0, color.y));
+    color.z = std::min(255, std::max(0, color.z));
+//    if (color.x > 255) color.x = 255; else if (color.x < 0) color.x = 0; else color.x = round(color.x);
+//    if (color.y > 255) color.y = 255; else if (color.y < 0) color.y = 0; else color.y = round(color.y);
+//    if (color.z > 255) color.z = 255; else if (color.z < 0) color.z = 0; else color.z = round(color.z);
+//    if (color.x > 255) color.x = 255; else if (color.x < 0) color.x = 0; else color.x = color.x;
+//    if (color.y > 255) color.y = 255; else if (color.y < 0) color.y = 0; else color.y = color.y;
+//    if (color.z > 255) color.z = 255; else if (color.z < 0) color.z = 0; else color.z = color.z;
+    return color;
+
+}
+
 
 
 Ray getRay(int w, int h, Camera &cam){
@@ -128,6 +146,7 @@ Vec3f intersectionPt(Ray &ray, double t){
  * */
 
 Intersection sphereIntersection(Ray &ray, Scene &scene, const Sphere &sphere){
+    Intersection pt;
     Vec3f center = scene.vertex_data[sphere.center_vertex_id - 1];
     Vec3f o_c = ray.origin-center;
     float a = dotProduct(ray.direction, ray.direction);
@@ -152,10 +171,8 @@ Intersection sphereIntersection(Ray &ray, Scene &scene, const Sphere &sphere){
             Vec3f normal = (intersect_point - center)/sphere.radius;
             return Intersection(true, sphere.material_id, t, SPH, normal, intersect_point);
         }
-
-    }else{
-        return Intersection(false);
     }
+    return pt;
 }
 
 Intersection triangleIntersection(Ray &ray, Scene &scene, const Triangle &triangle){
@@ -194,6 +211,13 @@ Intersection triangleIntersection(Ray &ray, Scene &scene, const Triangle &triang
     if(beta < 0 || beta > (1-gamma)){
         return pt;
     }
+    Vec3f temp = crossProduct(ray.direction, ac);
+    float az = dotProduct(ab, temp);
+    if ( az > -1e-6 && az <1e-6){
+        return pt;
+    }
+
+
 
     Vec3f ints = ray.origin + ray.direction*t;
     Vec3f ba = b-a;
@@ -223,7 +247,7 @@ Intersection meshIntersection(Ray &ray, Scene &scene, const Mesh &mesh){
 Vec3f irradiance(PointLight &light, Vec3f &point){
     Vec3f i = light.position - point;
     float d = dotProduct(i, i);
-    if(d != 0.0){
+    if(round(d) != 0){
         return light.intensity / d;
     }
     return Vec3f();
@@ -369,7 +393,6 @@ int main(int argc, char* argv[]) {
     for (Camera &cam: scene.cameras) {
         const int width = cam.image_width, height = cam.image_height;
         unsigned char *image = new unsigned char[width * height * 3];
-
         int i = 0;
 
         for (int h = 0; h < cam.image_height; h++) {
@@ -385,6 +408,7 @@ int main(int argc, char* argv[]) {
                     image[i+1] = intersection.color.y;
                     image[i+2] = intersection.color.z;
                 } else {
+                    scene.background_color = clamp(scene.background_color);
                     image[i] = scene.background_color.x;
                     image[i+1] = scene.background_color.y;
                     image[i+2] = scene.background_color.z;
