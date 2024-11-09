@@ -1,12 +1,11 @@
 #include <iostream>
-#include <math.h>
+#include <cmath>
 #include "parser.h"
 #include "ppm.h"
 
 using namespace parser;
 typedef unsigned char RGB[3];
 
-enum object_type{NONE, SPH, TRI, MESH};
 /*
  * for each pixel s
  * compute r // done
@@ -27,6 +26,12 @@ enum object_type{NONE, SPH, TRI, MESH};
  *
  * */
 
+/*
+ *
+ * structs
+ *
+ * */
+
 struct Ray{
     Vec3f origin;
     Vec3f direction;
@@ -41,17 +46,21 @@ struct Intersection {
     bool intersects;
     int materialId;
     float tValue;
-    object_type obj_type;
     Vec3f surfaceNormal;
     Vec3f intPoint;
     Vec3f color;
 
-    Intersection():intersects(false){}
-    Intersection(bool itsct): intersects(itsct){}
-    Intersection(bool intcs, int mat_id, float tval, object_type obty, Vec3f nrml, Vec3f intpt)
-    :intersects(intcs), materialId(mat_id), tValue(tval), obj_type(obty), surfaceNormal(nrml), intPoint(intpt){}
+    Intersection():intersects(false), tValue(std::numeric_limits<float>::max()){}
+    Intersection(bool intcs, int mat_id, float tval, Vec3f nrml, Vec3f intpt)
+    :intersects(intcs), materialId(mat_id), tValue(tval), surfaceNormal(nrml), intPoint(intpt){}
 
 };
+
+/*
+ *
+ * math calculations
+ *
+ **/
 
 float calcDeterminant(const Vec3f &v0, const Vec3f &v1, const Vec3f &v2){
     return v0.x * (v1.y*v2.z - v2.y*v1.z)
@@ -86,31 +95,22 @@ Vec3f clamp(Vec3f color){
     color.x = std::min(255.0f, std::max(0.0f, color.x));
     color.y = std::min(255.0f, std::max(0.0f, color.y));
     color.z = std::min(255.0f, std::max(0.0f, color.z));
-//    if (color.x > 255) color.x = 255; else if (color.x < 0) color.x = 0; else color.x = round(color.x);
-//    if (color.y > 255) color.y = 255; else if (color.y < 0) color.y = 0; else color.y = round(color.y);
-//    if (color.z > 255) color.z = 255; else if (color.z < 0) color.z = 0; else color.z = round(color.z);
-//    if (color.x > 255) color.x = 255; else if (color.x < 0) color.x = 0; else color.x = color.x;
-//    if (color.y > 255) color.y = 255; else if (color.y < 0) color.y = 0; else color.y = color.y;
-//    if (color.z > 255) color.z = 255; else if (color.z < 0) color.z = 0; else color.z = color.z;
-    return color;
 
+    return color;
 }
 
 Vec3i clamp(Vec3i color){
     color.x = std::min(255, std::max(0, color.x));
     color.y = std::min(255, std::max(0, color.y));
     color.z = std::min(255, std::max(0, color.z));
-//    if (color.x > 255) color.x = 255; else if (color.x < 0) color.x = 0; else color.x = round(color.x);
-//    if (color.y > 255) color.y = 255; else if (color.y < 0) color.y = 0; else color.y = round(color.y);
-//    if (color.z > 255) color.z = 255; else if (color.z < 0) color.z = 0; else color.z = round(color.z);
-//    if (color.x > 255) color.x = 255; else if (color.x < 0) color.x = 0; else color.x = color.x;
-//    if (color.y > 255) color.y = 255; else if (color.y < 0) color.y = 0; else color.y = color.y;
-//    if (color.z > 255) color.z = 255; else if (color.z < 0) color.z = 0; else color.z = color.z;
     return color;
-
 }
 
-
+/*
+ *
+ * ray calculations
+ *
+ * */
 
 Ray getRay(int w, int h, Camera &cam){
 
@@ -118,6 +118,7 @@ Ray getRay(int w, int h, Camera &cam){
     float r = cam.near_plane.y;
     float b = cam.near_plane.z;
     float t = cam.near_plane.w;
+
     float s_u = (r - l)*(w+0.5)/cam.image_width;
     float s_v = (t- b)*(h+0.5)/cam.image_height;
 
@@ -129,12 +130,14 @@ Ray getRay(int w, int h, Camera &cam){
     Vec3f q = m + (u*l) + (v*t);
     Vec3f s = q + (u*s_u) - (v*s_v);
     Vec3f d = normalize(s - cam.position);
+
     Ray ray(cam.position, d);
     return ray;
 }
 
-Vec3f intersectionPt(Ray &ray, double t){
+Vec3f intersectionPt(Ray &ray, float t){
     // r(t) = o +td
+
     Vec3f p = ray.origin + ray.direction*t;
     return p;
 }
@@ -147,8 +150,10 @@ Vec3f intersectionPt(Ray &ray, double t){
 
 Intersection sphereIntersection(Ray &ray, Scene &scene, const Sphere &sphere){
     Intersection pt;
+
     Vec3f center = scene.vertex_data[sphere.center_vertex_id - 1];
     Vec3f o_c = ray.origin-center;
+
     float a = dotProduct(ray.direction, ray.direction);
     float b = 2*dotProduct(ray.direction, o_c) ;
     float c = dotProduct(o_c, o_c) - (sphere.radius*sphere.radius);
@@ -156,20 +161,22 @@ Intersection sphereIntersection(Ray &ray, Scene &scene, const Sphere &sphere){
     float discriminant = (b*b) - 4*(a*c);
 
     if (discriminant >= 0){
-        /*float firstTerm = (-1)*b/2;
-        float secondTerm = sqrt(pow(b/2, 2) - a*(dotProduct(o_c, o_c))- pow(sphere.radius,2));
 
-        float t1 = (firstTerm + secondTerm)/a;
-        float t2 = (firstTerm - secondTerm)/a;
-*/
         float t1 = (-b - sqrt(discriminant))/(2*a);
         float t2 = (-b + sqrt(discriminant))/(2*a);
+        float t;
 
-        float t = (t1 < t2) ? t1: t2;
+        if(t1 < t2){
+            t = t1;
+        } else{
+            t = t2;
+        }
+
         if(t > 0){
             Vec3f intersect_point = intersectionPt(ray, t);
-            Vec3f normal = (intersect_point - center)/sphere.radius;
-            return Intersection(true, sphere.material_id, t, SPH, normal, intersect_point);
+            Vec3f normal_nom = intersect_point - center;
+            Vec3f normal = normal_nom/sphere.radius;
+            return Intersection(true, sphere.material_id, t, normal, intersect_point);
         }
     }
     return pt;
@@ -183,14 +190,11 @@ Intersection triangleIntersection(Ray &ray, Scene &scene, const Triangle &triang
     Vec3f &b = scene.vertex_data[triangle.indices.v1_id -1];
     Vec3f &c = scene.vertex_data[triangle.indices.v2_id -1];
 
-    Vec3f ab = a - b;
-    Vec3f ac = a - c;
-    Vec3f ao = a - ray.origin;
+    Vec3f ab = a - b, ac = a - c, ao = a - ray.origin;
 
     float beta_determinant = calcDeterminant(ao, ac, ray.direction);
     float gamma_determinant = calcDeterminant(ab, ao, ray.direction);
     float t_determinant = calcDeterminant(ab, ac, ao);
-
     float a_determinant = calcDeterminant(ab, ac, ray.direction);
 
     if (a_determinant == 0){
@@ -211,30 +215,24 @@ Intersection triangleIntersection(Ray &ray, Scene &scene, const Triangle &triang
     if(beta < 0 || beta > (1-gamma)){
         return pt;
     }
-    Vec3f temp = crossProduct(ray.direction, ac);
-    float az = dotProduct(ab, temp);
-    if ( az > -1e-6 && az <1e-6){
-        return pt;
-    }
 
+    Vec3f ints = intersectionPt(ray, t);
+    Vec3f normal = normalize(crossProduct(ab, ac));
 
-
-    Vec3f ints = ray.origin + ray.direction*t;
-    Vec3f ba = b-a;
-    Vec3f ca = c-a;
-    Vec3f normal = normalize(crossProduct(ba, ca));
-    return Intersection(true, triangle.material_id, t, TRI, normal, ints);
+    return Intersection(true, triangle.material_id, t, normal, ints);
 }
 
 Intersection meshIntersection(Ray &ray, Scene &scene, const Mesh &mesh){
     Intersection closest;
-    closest.tValue = std::numeric_limits<float>::max();
-    for (const Face &face: mesh.faces){
-        Intersection possible_intersection = triangleIntersection(ray,scene, Triangle(mesh.material_id, face));
-        if(possible_intersection.intersects && possible_intersection.tValue < closest.tValue){
-            closest = possible_intersection;
+    int meshSize = (mesh.faces.size());
+
+    for (int i = 0; i < meshSize; ++i) {
+        Intersection poss_int = triangleIntersection(ray, scene, Triangle(mesh.material_id, mesh.faces[i]));
+        if (poss_int.intersects && poss_int.tValue < closest.tValue){
+            closest = poss_int;
         }
     }
+
     return closest;
 }
 
@@ -245,31 +243,43 @@ Intersection meshIntersection(Ray &ray, Scene &scene, const Mesh &mesh){
  * */
 
 Vec3f irradiance(PointLight &light, Vec3f &point){
+    Vec3f result;
     Vec3f i = light.position - point;
     float d = dotProduct(i, i);
-    if(round(d) != 0){
-        return light.intensity / d;
-    }
-    return Vec3f();
 
+    if(round(d) != 0){
+        result =  light.intensity / d;
+    }
+
+    return result;
 }
 
 Vec3f diffuseShading(PointLight &light, Scene &scene, Intersection &intersection){
-    Vec3f irrd = irradiance(light, intersection.intPoint);
     Vec3f l = normalize((light.position - intersection.intPoint));
-    float  p = dotProduct(l, intersection.surfaceNormal) >= 0 ? dotProduct(l, intersection.surfaceNormal): 0;
+    float p = dotProduct(l, intersection.surfaceNormal);
+    if (p < 0){
+        p = 0;
+    }
+
+    Vec3f irrd = irradiance(light, intersection.intPoint);
+
     return scene.materials[intersection.materialId-1].diffuse*(irrd*p);
 
 }
 
 Vec3f specularShading(PointLight &light, Scene &scene, Intersection &intersection, Ray &ray){
-    Vec3f irrd = irradiance(light, intersection.intPoint);
-    Material material = scene.materials[intersection.materialId-1];
+    float phong= scene.materials[intersection.materialId-1].phong_exponent;
     Vec3f l = normalize(light.position - intersection.intPoint);
     Vec3f r = normalize(l - ray.direction);
 
-    float p = dotProduct(intersection.surfaceNormal, r) >=0? dotProduct(intersection.surfaceNormal, r): 0;
-    return material.specular * irrd * pow(p, material.phong_exponent);
+    float p = dotProduct(intersection.surfaceNormal, r);
+    if(p < 0){
+        p = 0;
+    }
+
+    Vec3f irrd = irradiance(light, intersection.intPoint);
+
+    return scene.materials[intersection.materialId-1].specular * irrd * pow(p, phong);
 }
 
 /*
@@ -286,41 +296,32 @@ Intersection hitFunction(Ray &ray, Scene &scene, Camera &cam, int mirrorRecDepth
     if (mirrorRecDepth < 0){
         return result;
     }
-    result.tValue = std::numeric_limits<float>::max();
 
-    for (int i = 0; i < scene.spheres.size(); ++i) {
-        const Sphere &sph = scene.spheres[i];
+    for (const Sphere &sph : scene.spheres) {
         Intersection closestSphere = sphereIntersection(ray, scene, sph);
-        if (closestSphere.intersects && closestSphere.tValue < result.tValue){
-            result = closestSphere;
-        }
+        if (closestSphere.intersects && closestSphere.tValue < result.tValue){result = closestSphere;}
     }
 
-    for (int j = 0; j < scene.triangles.size(); ++j) {
-        const Triangle &tri = scene.triangles[j];
-        Intersection closestTriangle = triangleIntersection(ray,scene,tri);
-        if (closestTriangle.intersects && closestTriangle.tValue < result.tValue){
-            result = closestTriangle;
-        }
+    for(const Triangle &tri : scene.triangles){
+        Intersection closestTriangle = triangleIntersection(ray, scene, tri);
+        if (closestTriangle.intersects && closestTriangle.tValue < result.tValue){result = closestTriangle;}
     }
 
-    for (int k = 0; k < scene.meshes.size(); ++k) {
-        const Mesh &msh = scene.meshes[k];
+    for (const Mesh &msh : scene.meshes){
         Intersection closestMesh = meshIntersection(ray, scene, msh);
-        if (closestMesh.intersects && closestMesh.tValue < result.tValue){
-            result = closestMesh;
-        }
+        if(closestMesh.intersects && closestMesh.tValue < result.tValue){result = closestMesh;}
+
     }
 
     if(result.intersects){
-
         //check for shadow
+
         Material material = scene.materials[result.materialId-1];
+
         Vec3f color = material.ambient * scene.ambient_light;
 
         for (PointLight &light : scene.point_lights){
             bool inShadow = false;
-            float distance = calcDistance(light.position, cam.position);
 
             Vec3f w = normalize(light.position - result.intPoint);
             Vec3f e = w * scene.shadow_ray_epsilon;
@@ -328,55 +329,46 @@ Intersection hitFunction(Ray &ray, Scene &scene, Camera &cam, int mirrorRecDepth
             Ray shadowRay(result.intPoint + e, w);
 
             //t value for point lights, if it is lower than shadow's, object is in light, otherwise in shadow.
+            Vec3f plightVec = (light.position - shadowRay.origin)/shadowRay.direction;
+            float tLight = plightVec.x;
 
-            float tLight = (light.position - shadowRay.origin).x/shadowRay.direction.x;
-
-            for (int i = 0; i < scene.spheres.size(); ++i) {
-                const Sphere &sph = scene.spheres[i];
+            for(const Sphere &sph : scene.spheres){
                 Intersection sphInts = sphereIntersection(shadowRay, scene, sph);
-                if(sphInts.intersects && sphInts.tValue < tLight){
-                    inShadow = true;
-                }
+                if(sphInts.intersects && sphInts.tValue < tLight){inShadow = true;}
             }
 
-            for (int j = 0; j < scene.triangles.size(); ++j) {
-                const Triangle &tri = scene.triangles[j];
+            for(const Triangle &tri : scene.triangles){
                 Intersection triInts = triangleIntersection(shadowRay, scene, tri);
-                if (triInts.intersects && triInts.tValue < tLight){
-                    inShadow = true;
-                }
+                if(triInts.intersects && triInts.tValue < tLight){inShadow = true;}
             }
 
             if(!inShadow){
-                for (int k = 0; k < scene.meshes.size(); ++k) {
-                    const Mesh &msh = scene.meshes[k];
+                for(const Mesh &msh : scene.meshes){
                     Intersection meshInts = meshIntersection(shadowRay, scene, msh);
-                    if (meshInts.intersects && meshInts.tValue < tLight){
-                        inShadow = true;
-                    }
-
+                    if(meshInts.intersects && meshInts.tValue < tLight){inShadow = true;}
                 }
             }
 
-            if(!inShadow || (inShadow && distance == 0)){
-                int material_id = result.materialId;
+            float distance = calcDistance(light.position, cam.position);
+            if(!inShadow || ((distance == 0) && inShadow)){
                 Vec3f diffuse = diffuseShading(light, scene, result);
                 Vec3f specular = specularShading(light, scene, result, ray);
-                color += diffuse + specular;
+                Vec3f diffusePlusSpecular = diffuse+specular;
+                color += diffusePlusSpecular;
 
             }
         }
 
         if(material.is_mirror){
-
-            Vec3f reflectionDirection = normalize(ray.direction - result.surfaceNormal * 2.0 * dotProduct(ray.direction, result.surfaceNormal));
+            float dotProductDoubled = 2.0* dotProduct(ray.direction, result.surfaceNormal);
+            Vec3f nrml = result.surfaceNormal*dotProductDoubled;
+            Vec3f reflectionDirection = normalize(ray.direction - nrml);
             Vec3f eps = reflectionDirection * scene.shadow_ray_epsilon;
+
             Ray reflection(result.intPoint+eps, reflectionDirection);
             Intersection reflectionIntersection= hitFunction(reflection, scene, cam, mirrorRecDepth - 1);
 
-            if (reflectionIntersection.intersects){
-                color += reflectionIntersection.color * scene.materials[result.materialId-1].mirror;
-            }
+            if (reflectionIntersection.intersects){color += reflectionIntersection.color * scene.materials[result.materialId-1].mirror;}
         }
         result.color = color;
     }
@@ -397,17 +389,13 @@ int main(int argc, char* argv[]) {
         int i = 0;
 
         for (int h = 0; h < cam.image_height; h++) {
-            if((h % 100) == 0){
-                std::cout << "pirt" << std::endl;
-
-            }
             for (int w = 0; w < cam.image_width; w++, i+=3) {
 
                 Ray ray = getRay(w, h, cam);
-                Intersection intersection = hitFunction(ray, scene, cam, scene.max_recursion_depth);
                 //find intersection
-                //calculate rgb, pls clamp.
+                Intersection intersection = hitFunction(ray, scene, cam, scene.max_recursion_depth);
 
+                //calculate rgb and pls clamp.
                 if (intersection.intersects) {
                     intersection.color = clamp(intersection.color);
                     image[i] = intersection.color.x;

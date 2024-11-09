@@ -19,9 +19,8 @@ namespace parser
         float x, y, z;
 
         Vec3f(){}
-
         Vec3f(float x, float y, float z): x(x), y(y), z(z){}
-
+        Vec3f(const Vec3f &vec): x(vec.x), y(vec.y), z(vec.z){}
         Vec3f(const Vec3i &vec): x(vec.x), y(vec.y), z(vec.z){}
 
         Vec3f operator* (float scl) const{
@@ -54,7 +53,7 @@ namespace parser
             return *this;
         }
 
-        Vec3f operator- (const Vec3f &vec){
+        Vec3f operator- (const Vec3f &vec) const{
             return {
                     x - vec.x,
                     y - vec.y,
@@ -69,6 +68,15 @@ namespace parser
                     z/scl
             };
         }
+
+        Vec3f operator/ (Vec3f vec) const{
+            return {
+                    x/vec.x,
+                    y/vec.y,
+                    z/vec.z
+            };
+        }
+
 
         Vec3f operator= (const Vec3f &vec){
             return {
