@@ -283,7 +283,7 @@ Intersection hitFunction(Ray &ray, Scene &scene, Camera &cam, int mirrorRecDepth
     Intersection result;
 
 
-    if (mirrorRecDepth > scene.max_recursion_depth){
+    if (mirrorRecDepth < 0){
         return result;
     }
     result.tValue = std::numeric_limits<float>::max();
@@ -368,13 +368,14 @@ Intersection hitFunction(Ray &ray, Scene &scene, Camera &cam, int mirrorRecDepth
         }
 
         if(material.is_mirror){
-            Vec3f reflectionDirection = normalize(ray.direction - result.surfaceNormal * 2.0 * dotProduct(ray.direction, result.surfaceNormal)) ;
+
+            Vec3f reflectionDirection = normalize(ray.direction - result.surfaceNormal * 2.0 * dotProduct(ray.direction, result.surfaceNormal));
             Vec3f eps = reflectionDirection * scene.shadow_ray_epsilon;
             Ray reflection(result.intPoint+eps, reflectionDirection);
-            Intersection reflectionIntersection= hitFunction(reflection, scene, cam, mirrorRecDepth + 1);
+            Intersection reflectionIntersection= hitFunction(reflection, scene, cam, mirrorRecDepth - 1);
 
             if (reflectionIntersection.intersects){
-                color += scene.materials[reflectionIntersection.materialId-1].mirror;
+                color += reflectionIntersection.color * scene.materials[result.materialId-1].mirror;
             }
         }
         result.color = color;
@@ -396,7 +397,12 @@ int main(int argc, char* argv[]) {
         int i = 0;
 
         for (int h = 0; h < cam.image_height; h++) {
+            if((h % 100) == 0){
+                std::cout << "pirt" << std::endl;
+
+            }
             for (int w = 0; w < cam.image_width; w++, i+=3) {
+
                 Ray ray = getRay(w, h, cam);
                 Intersection intersection = hitFunction(ray, scene, cam, scene.max_recursion_depth);
                 //find intersection
@@ -419,5 +425,3 @@ int main(int argc, char* argv[]) {
     }
     return 0;
 }
-
-
